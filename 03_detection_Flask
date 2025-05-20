@@ -1,0 +1,62 @@
+from flask import Flask, request
+import cv2
+import numpy as np
+
+app = Flask(__name__)
+
+face_detector = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.read('trainer/trainer.yml')
+
+# tem estar na mesma dos IDs
+names = ['None', 'Erick'] 
+
+@app.route('/', methods=['GET'])
+def home():
+    return "Servidor Flask rodando"
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    try:
+        img_bytes = request.data
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img is None:
+            print("Falha ao decodificar a imagem recebida.")
+            return "Erro na imagem recebida", 400
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray) 
+
+        faces = face_detector.detectMultiScale(
+            gray,
+            scaleFactor=1.05, 
+            minNeighbors=3,
+            minSize=(80, 80)  
+        )
+
+        if len(faces) == 0:
+            print("Nenhum rosto detectado.")
+            return "Nenhum rosto detectado", 200
+
+        for (x, y, w, h) in faces:
+            roi_gray = gray[y:y+h, x:x+w]
+            id, confidence = recognizer.predict(roi_gray)
+
+            if confidence < 100 and id < len(names):
+                name = names[id]
+            else:
+                name = "Desconhecido"
+
+            print(f"Reconhecido: ID={id} Nome={name} Confiança={confidence:.2f}%")
+            return name, 200
+
+        return "Desconhecido", 200
+
+    except Exception as e:
+        print("erro no upload:", e)
+        return "Erro interno no servidor", 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
